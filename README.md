@@ -4,12 +4,15 @@ Utilities to turn various file formats into HDF5 equivalents
 
 SUMMARY
 
-This is a collection of utilities to turn a file from its native (text of
+This is a collection of utilities to turn a file from its native (text or
 binary) format to HDF5 (binary) format. The software will HDFy existing files.
 
 Current (fully and partially) supported formats:
 
+- Alias Wavefront (OBJ) files (coming later)
 - STL (coming right up)
+- ANSYS Fluent "case " format (coming as partially supported)
+- NASTRAN (coming soon)
 
 
 MOTIVATION
