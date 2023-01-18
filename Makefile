@@ -25,10 +25,11 @@ RPATH = -rpath=$(EXTRA_DIR)
 ############################### Target ##############################
 all: objs
 	$(CC) $(COPTS) -Wl,-rpath=. main.c \
-         hdfy_stl.o \
+         hdfy_stl.o stl.o \
          $(LIBS)
 
 objs:
+	$(CC) $(COPTS) -c stl.c
 	$(CC) $(COPTS) -c hdfy_stl.c
 
 clean:
