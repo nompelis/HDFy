@@ -9,7 +9,7 @@ binary) format to HDF5 (binary) format. The software will HDFy existing files.
 
 Current (fully and partially) supported formats:
 
-- Alias Wavefront (OBJ) files (coming later)
+- Alias Wavefront (OBJ) files (almost there!)
 - STL (coming right up)
 - ANSYS Fluent "case " format (coming as partially supported)
 - NASTRAN (coming soon)
@@ -44,4 +44,5 @@ I will think about it, but some kind of "open source" sounds good.
 
 
 IN 2023/01/06 (initial repository creation)
+IN 2023/10/05 Added (incomplete) Alias Wavefront OBJ file reader
 

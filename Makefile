@@ -26,11 +26,14 @@ RPATH = -rpath=$(EXTRA_DIR)
 all: objs
 	$(CC) $(COPTS) -Wl,-rpath=. main.c \
          hdfy_stl.o stl.o \
+         hdfy_obj.o inobj.o \
          $(LIBS)
 
 objs:
 	$(CC) $(COPTS) -c stl.c
 	$(CC) $(COPTS) -c hdfy_stl.c
+	$(CXX) $(CXXOPTS) -c inobj.cpp
+	$(CC) $(COPTS) -c hdfy_obj.c
 
 clean:
 	rm -f  *.o a.out 
