@@ -71,7 +71,7 @@ class inObj {
  protected:
    unsigned int istate;
 
-   enum inObjPraseState {
+   enum inObjParseState {
       OBJ_UNKNOWN,
       OBJ_OPEN,
       OBJ_COMMENT,
@@ -88,13 +88,40 @@ class inObj {
       OBJ_READY,
       OBJ_ERROR
    };
-   inObjPraseState pstate=OBJ_UNKNOWN;
+   inObjParseState pstate=OBJ_UNKNOWN;
 
    struct inObjGrp_s {
-      int vs,ve;
-      int ts,te;
-      int ns,ne;
+      std::string name;
       int fs,fe;
+   };
+
+   enum inMtlParseState {
+      MTLLIB_UNKNOWN,
+      MTLLIB_OPEN,
+      MTLLIB_NEWMTL,
+      MTLLIB_KA,        // ambient
+      MTLLIB_KD,        // diffuse
+      MTLLIB_KS,        // specular
+      MTLLIB_NS,        // specular exponent
+      MTLLIB_NI,        // specular index
+      MTLLIB_D,         // disolve factor (transparency/opacity)
+      MTLLIB_ILLUM,
+      MTLLIB_MAPKD,
+      MTLLIB_READY,
+      MTLLIB_ERROR
+   };
+   inMtlParseState mstate=MTLLIB_UNKNOWN;
+
+   struct inObjMtl_s {
+      std::string name;
+      float Ka[3];
+      float Kd[3];
+      float Ks[3];
+      float Ns;
+      float Ni;
+      float d;
+      unsigned short illum;
+      std::string map_Kd;
    };
 
  private:
@@ -102,11 +129,10 @@ class inObj {
    FILE *fp=NULL;
    int num_lines=0;
    short num_groups=0;
-   struct inObjGrp_s dgroup = { .vs=0, .ve=0,
-                                .ts=0, .te=0,
-                                .ns=0, .ne=0,
-                                .fs=0, .fe=0 };
+   struct inObjGrp_s dgroup = { .fs=0, .fe=0 };
    std::vector< struct inObjGrp_s > groups;
+   std::string mtllib_name;
+   std::vector< struct inObjMtl_s > mtls;
    struct vec2_s { float u,v; };
    struct vec3_s { float x,y,z; };
    std::vector< vec3_s > vertex;
@@ -125,6 +151,9 @@ class inObj {
    int handleGroup( std::vector< std::string > & strings );
    int handleSmooth( std::vector< std::string > & strings );
    int handleObject( std::vector< std::string > & strings );
+   int handleMtllib( std::vector< std::string > & strings );
+   int parseMtllib();
+   int handleMtlLine( struct inObjMtl_s & mtl_, int & have_one );
 
    char* buf=NULL,*buf2=NULL;
    size_t nbytes=0;

@@ -94,7 +94,15 @@ int inObj::read( const char filename_[] )
 
    fclose( fp );
 
-   return 0;
+   // real the matllib file
+   if( iret == 0 ) {
+      iret = parseMtllib();
+      if( iret ) {
+         iret = 2;
+      }
+   }
+
+   return iret;
 }
 
 int inObj::getState() const
@@ -108,8 +116,10 @@ void inObj::clear()
    filename.clear();
    num_lines=0;
    num_groups=0;
-   dgroup = { .vs=0, .ve=0, .ts=0, .te=0, .ns=0, .ne=0, .fs=0, .fe=0 };
+   dgroup = { .fs=0, .fe=0 };
    groups.clear();
+   mtllib_name.clear();
+   mtls.clear();
    vertex.clear();
    normal.clear();
    texel.clear();
@@ -204,14 +214,9 @@ int inObj::parse()
 #endif
 #ifdef _DEBUG_
    fprintf( stdout, " [DEBUG]  Groups dump (%d) \n", (int) groups.size() );
-   fprintf( stdout, "  (Vertices) (Texels) (Normals) (Faces) \n" );
    if( num_groups )
       for(int i=0;i<(int) groups.size();++i)
-         fprintf( stdout, "  %d  [%d:%d] [%d:%d] [%d;%d] [%d:%d] \n", i,
-                  groups[i].vs, groups[i].ve,
-                  groups[i].ts, groups[i].te,
-                  groups[i].ns, groups[i].ne,
-                  groups[i].fs, groups[i].fe );
+         fprintf( stdout, "  %d  [%d:%d] \n", i, groups[i].fs, groups[i].fe );
 #endif
    return ierr;
 }
@@ -428,7 +433,7 @@ int inObj::handleLine()
          ierr = handleObject( strings );
        break;
        case OBJ_MTLLIB:
-         // ...
+         ierr = handleMtllib( strings );
        break;
        case OBJ_USEMTL:
          // ...
@@ -455,11 +460,6 @@ int inObj::handleVertex( std::vector< std::string > & strings )
    v.z = r;
    vertex.push_back( v );
 
-   ( dgroup.ve )++;
-   if( num_groups ) {
-      ( groups[ num_groups-1 ].ve )++;
-   }
-
    return 0;
 }
 
@@ -475,11 +475,6 @@ int inObj::handleNormal( std::vector< std::string > & strings )
    v.z = r;
    normal.push_back( v );
 
-   ( dgroup.ne )++;
-   if( num_groups ) {
-      ( groups[ num_groups-1 ].ne )++;
-   }
-
    return 0;
 }
 
@@ -492,11 +487,6 @@ int inObj::handleTexel( std::vector< std::string > & strings )
    sscanf( strings[2].c_str(), "%f", &r );
    v.v = r;
    texel.push_back( v );
-
-   ( dgroup.te )++;
-   if( num_groups ) {
-      ( groups[ num_groups-1 ].te )++;
-   }
 
    return 0;
 }
@@ -569,37 +559,17 @@ int inObj::handleFace( std::vector< std::string > & strings )
    return ierr;
 }
 
-//
-// Some disclaimers on the group struct(s) and on why this function is this way.
-//
-// I think that for this format, groups are inly meaningful for polygons/faces,
-// and all vertex, normals, and texels are not necessarily grouped. This makes
-// sense of the format were to have repeated such entities across groups, say
-// vertices that were introduced in creating polygons appearing in earlier
-// groups define polygons in subsequent groups. If I am wrong, these structs
-// work fine. If I am right, these structs work fine, and only use the indices
-// grouping polygons/faces "fs" and "fe".
-//
-
 int inObj::handleGroup( std::vector< std::string > & strings )
 {
-   struct inObjGrp_s ngroup = { .vs = dgroup.ve, .ve = dgroup.ve,
-                                .ts = dgroup.te, .te = dgroup.te,
-                                .ns = dgroup.ne, .ne = dgroup.ne,
-                                .fs = dgroup.fe, .fe = dgroup.fe };
-   dgroup.vs = dgroup.ve;
-   dgroup.ts = dgroup.te;
-   dgroup.ns = dgroup.ne;
+   struct inObjGrp_s ngroup = { .fs = dgroup.fe, .fe = dgroup.fe };
+   if( strings.size() > 1 ) { ngroup.name = strings[1].c_str(); }
    dgroup.fs = dgroup.fe;
    groups.push_back( ngroup );
    ++num_groups;
 #ifdef _DEBUG_
    fprintf( stdout, " [DEBUG:handleGroup]  New group (%d) ", num_groups );
-   fprintf( stdout, " [%d:%d] [%d:%d] [%d:%d] [%d:%d] \n",
-            ngroup.vs, ngroup.ve,
-            ngroup.ns, ngroup.ne,
-            ngroup.ts, ngroup.te,
-            ngroup.fs, ngroup.fe );
+   fprintf( stdout, " [%d:%d] \"%s\"\n", ngroup.fs, ngroup.fe,
+            ngroup.name.c_str() );
 #endif
 
    return 0;
@@ -607,13 +577,299 @@ int inObj::handleGroup( std::vector< std::string > & strings )
 
 int inObj::handleSmooth( std::vector< std::string > & strings )
 {
+   fprintf( stdout, " [Info]  Issues with \"s\" (\"smooth\") directives.\n" );
+   fprintf( stdout, "%s\n%s\n%s\n%s\n",
+                    "  This parser does _not_ handle hierarchical objects.",
+                    "  Objects should comprise of Groups, but not here...",
+                    "  Smoothing is associated with objects, and therefore",
+                    "  it is neglected here." );
    return 0;
 }
 
 int inObj::handleObject( std::vector< std::string > & strings )
 {
+   fprintf( stdout, " [Info]  Issues with \"o\" (\"object\") directives.\n" );
+   fprintf( stdout, "%s\n%s\n%s\n",
+                    "  This parser does _not_ handle hierarchical objects.",
+                    "  Objects should comprise of Groups, but not here...",
+                    "  Groups are fine-grained enough for the time being." );
    return 0;
 }
+
+int inObj::handleMtllib( std::vector< std::string > & strings )
+{
+   if( strings.size() > 1 ) {
+      mtllib_name = strings[1].c_str();
+#ifdef _DEBUG_
+      fprintf( stdout, " [DEBUG:handleMtllib]  Mtllib: \"%s\" \n",
+               mtllib_name.c_str() );
+#endif
+   } else {
+      return 1;
+   }
+
+   return 0;
+}
+
+#define MTLLIB_INIT( mtl ) mtl = \
+                           { .Ka = { -1.0, -1.0, -1.0 },\
+                             .Kd = { -1.0, -1.0, -1.0 },\
+                             .Ks = { -1.0, -1.0, -1.0 },\
+                             .Ns = -9.9,\
+                             .Ni = -9.9,\
+                             .d = -9.9,\
+                             .illum = 9999 };
+#ifdef _DEBUG_
+#define MTLLIB_VIEW( mtl ) \
+      fprintf( stdout, " [DEBUG:mtllib_view]  Mtllib struct contents \n" );\
+      fprintf( stdout, " name: \"%s\" \n", mtl.name.c_str() );\
+      fprintf( stdout, " Ka[] = %lf %lf %lf \n",mtl.Ka[0],mtl.Ka[1],mtl.Ka[2]);\
+      fprintf( stdout, " Kd[] = %lf %lf %lf \n",mtl.Kd[0],mtl.Kd[1],mtl.Kd[2]);\
+      fprintf( stdout, " Ks[] = %lf %lf %lf \n",mtl.Ks[0],mtl.Ks[1],mtl.Ks[2]);\
+      fprintf( stdout, " Ns[] = %lf, Ni = %lf, d = %lf\n",mtl.Ns,mtl.Ni,mtl.d);\
+      fprintf( stdout, " map_Kd: \"%s\" \n", mtl.map_Kd.c_str() );
+#endif
+int inObj::parseMtllib()
+{
+  if( mtllib_name.size() == 0 ) return 0;
+
+#ifdef _DEBUG_
+      fprintf( stdout, " [DEBUG:parseMtllib]  Starting \n" );
+#endif
+   struct inObjMtl_s mtl;
+   MTLLIB_INIT( mtl )
+
+   fp = fopen( mtllib_name.c_str(), "r" );
+   if( fp == NULL ) {
+      fprintf( stdout, " [Error]  Could not open \"%s\" for reading. \n",
+               mtllib_name.c_str() );
+      return 2;
+   }
+   mstate = MTLLIB_OPEN;
+
+   int ierr=0,nline=0,have_one=0;
+   while( ierr == 0 &&
+          mstate != MTLLIB_ERROR &&
+          mstate != MTLLIB_READY ) {
+
+      int iret = readLine();
+#ifdef _DEBUG2_
+      fprintf( stdout, " [DEBUG:parseMtllib]  Reading line returned: %d \n", iret );
+#endif
+#ifdef _DEBUG_
+      fprintf( stdout, " [DEBUG:parseMtllib]  Line %d ==>%s<==\n", nline+1, buf );
+#endif
+      if( iret == -1 && iret == 999 ) {
+         ierr = -1;     // the error is internal
+      } else if( iret == 1 ) {
+#ifdef _DEBUG2_
+         fprintf( stdout, " [DEBUG:parseMtllib]  End-of-file mid-line \n" );
+#endif
+         mstate = MTLLIB_ERROR;
+      } else if( iret == 2 ) {
+#ifdef _DEBUG2_
+         fprintf( stdout, " [DEBUG:parseMtllib]  Inferred end-of-file \n" );
+#endif
+         if( have_one ) {
+#ifdef _DEBUG_
+            MTLLIB_VIEW( mtl )
+#endif
+            mtls.push_back( mtl );
+         }
+         mstate = MTLLIB_READY;
+      } else {
+         ierr = handleMtlLine( mtl, have_one );
+      }
+
+   }
+
+   fclose( fp );
+
+#ifdef _DEBUG_
+      fprintf( stdout, " [DEBUG:parseMtllib]  Ending (ierr=%d) \n", ierr );
+#endif
+   return ierr;
+}
+
+int inObj:: handleMtlLine( struct inObjMtl_s & mtl, int & have_one )
+{
+   int ierr=0, k=0;
+   memcpy( buf2, buf, nbytes+1 );
+   // clean-up what ChatGPT thought was cool to comment (how nice of her!)
+   while( buf2[k] != '\0' ) {
+      if( buf2[k] == '#' ) buf2[k] = '\0';
+      ++k;
+   }
+
+   if( buf[0] == '#' ) {
+#ifdef _DEBUG2_
+      fprintf( stdout, " [DEBUG:handleMtlLine]  Line is a comment \n" );
+#endif
+   } else if( buf[0] == '\0' ) {
+#ifdef _DEBUG2_
+      fprintf( stdout, " [DEBUG:handleMtlLine]  Line is blank; doing nothing \n" );
+#endif
+   } else {
+
+      std::vector< std::string > strings;
+      char *s, *saveptr=NULL;
+      int i;
+      for( i=0, s=buf2; ; ++i, s=NULL ) {
+         char *token = strtok_r( s, " ", &saveptr );
+         if( token == NULL ) break;
+#ifdef _DEBUG3_
+         fprintf( stdout, " [DEBUG:handleMtlLine]  Token: \"%s\"\n", token );
+#endif
+         strings.push_back( token );
+         if( i == 0 ) {
+            if( strcmp( token, "newmtl" ) == 0 ) {
+#ifdef _DEBUG2_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Detected \"newmtl\"\n" );
+#endif
+               mstate = MTLLIB_NEWMTL;
+            } else
+            if( strcmp( token, "Ka" ) == 0 ) {
+#ifdef _DEBUG2_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Detected \"Ka\"\n" );
+#endif
+               mstate = MTLLIB_KA;
+            } else
+            if( strcmp( token, "Kd" ) == 0 ) {
+#ifdef _DEBUG2_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Detected \"\Kd\"\n" );
+#endif
+               mstate = MTLLIB_KD;
+            } else
+            if( strcmp( token, "Ks" ) == 0 ) {
+#ifdef _DEBUG2_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Detected \"Ks\"\n" );
+#endif
+               mstate = MTLLIB_KS;
+            } else
+            if( strcmp( token, "Ns" ) == 0 ) {
+#ifdef _DEBUG2_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Detected \"Ns\"\n" );
+#endif
+               mstate = MTLLIB_NS;
+            } else
+            if( strcmp( token, "Ni" ) == 0 ) {
+#ifdef _DEBUG2_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Detected \"Ni\"\n" );
+#endif
+               mstate = MTLLIB_NI;
+            } else
+            if( strcmp( token, "d" ) == 0 ) {
+#ifdef _DEBUG2_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Detected \"d\"\n" );
+#endif
+               mstate = MTLLIB_D;
+            } else
+            if( strcmp( token, "illum" ) == 0 ) {
+#ifdef _DEBUG2_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Detected \"illum\"\n" );
+#endif
+               mstate = MTLLIB_ILLUM;
+            } else
+            if( strcmp( token, "map_Kd" ) == 0 ) {
+#ifdef _DEBUG2_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Detected \"map_Kd\"\n" );
+#endif
+               mstate = MTLLIB_MAPKD;
+            } else {
+               mstate = MTLLIB_ERROR;
+            }
+         }
+      }
+#ifdef _DEBUG2_
+      fprintf( stdout, " [DEBUG:handleMtlLine]  " );
+      for(i=0;i<(int) strings.size();++i) {
+         fprintf( stdout, " [%d] \"%s\"", i, strings[i].c_str() );
+      }
+      fprintf( stdout, "\n" );
+#endif
+
+      // check for errors
+      if( mstate == MTLLIB_ERROR ) {
+         fprintf( stdout, " [Error]  The MTLLIB is garbled \n" );
+         return 100;
+      }
+
+      // processing
+      float r;
+      switch( mstate ) {
+       case MTLLIB_NEWMTL:
+         if( have_one == 0 ) {   // the first one we encounter
+            have_one = 1;
+         } else {                // we have one, and we move to a new one
+#ifdef _DEBUG_
+            MTLLIB_VIEW( mtl )
+#endif
+            mtls.push_back( mtl );
+         }
+         MTLLIB_INIT( mtl );
+         mtl.name = strings[1].c_str();
+       break;
+       case MTLLIB_KA:
+         sscanf( strings[1].c_str(), "%f", &r );
+         mtl.Ka[0] = r;
+         sscanf( strings[2].c_str(), "%f", &r );
+         mtl.Ka[1] = r;
+         sscanf( strings[3].c_str(), "%f", &r );
+         mtl.Ka[2] = r;
+       break;
+       case MTLLIB_KD:
+         sscanf( strings[1].c_str(), "%f", &r );
+         mtl.Kd[0] = r;
+         sscanf( strings[2].c_str(), "%f", &r );
+         mtl.Kd[1] = r;
+         sscanf( strings[3].c_str(), "%f", &r );
+         mtl.Kd[2] = r;
+       break;
+       case MTLLIB_KS:
+         sscanf( strings[1].c_str(), "%f", &r );
+         mtl.Ks[0] = r;
+         sscanf( strings[2].c_str(), "%f", &r );
+         mtl.Ks[1] = r;
+         sscanf( strings[3].c_str(), "%f", &r );
+         mtl.Ks[2] = r;
+       break;
+       case MTLLIB_NS:
+         sscanf( strings[1].c_str(), "%f", &r );
+         mtl.Ns = r;
+       break;
+       case MTLLIB_NI:
+         sscanf( strings[1].c_str(), "%f", &r );
+         mtl.Ni = r;
+       break;
+       case MTLLIB_D:
+         sscanf( strings[1].c_str(), "%f", &r );
+         mtl.d = r;
+       break;
+       case MTLLIB_ILLUM:
+         sscanf( strings[1].c_str(), "%d", &i );
+         mtl.illum = i;
+       break;
+       case MTLLIB_MAPKD:
+         if( strings.size() > 1 ) {
+            mtl.map_Kd = strings[1];
+            for(i=2;i<(int) strings.size();++i) {
+               mtl.map_Kd += " ";
+               mtl.map_Kd += strings[i];
+            }
+         }
+       break;
+       case MTLLIB_READY:
+         // do not let this no-op condition faul into the default
+       break;
+       default:
+         fprintf( stdout, " [Error]  Parsing state unhandled \n" );
+         ierr = 999;
+      }
+   }
+
+   return ierr;
+}
+
 
 // Method to write a TecPlot file to visualize with ParaView
 // (For now all faces need to be triangles.)
