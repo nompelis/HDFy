@@ -44,5 +44,6 @@ I will think about it, but some kind of "open source" sounds good.
 
 
 IN 2023/01/06 (initial repository creation)
-IN 2023/10/05 Added (incomplete) Alias Wavefront OBJ file reader
+
+IN 2023/10/05 Added (incomplete - excludes textures) Alias Wavefront OBJ file reader
 
