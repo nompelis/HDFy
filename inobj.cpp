@@ -618,7 +618,8 @@ int inObj::handleMtllib( std::vector< std::string > & strings )
                              .Ns = -9.9,\
                              .Ni = -9.9,\
                              .d = -9.9,\
-                             .illum = 9999 };
+                             .illum = 9999, \
+                             .map_ptr = NULL };
 #ifdef _DEBUG_
 #define MTLLIB_VIEW( mtl ) \
       fprintf( stdout, " [DEBUG:mtllib_view]  Mtllib struct contents \n" );\

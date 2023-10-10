@@ -122,6 +122,7 @@ class inObj {
       float d;
       unsigned short illum;
       std::string map_Kd;
+      void* map_ptr;
    };
 
  private:
