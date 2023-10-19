@@ -2,7 +2,7 @@
  COPTS = -g -Wall -fPIC
  CXX = g++
  CXXOPTS = -g -Wall -fPIC
- LIBS = -lm -lstdc++ -lpthread -ldl -ltiff
+ LIBS = -lm -lstdc++ -lpthread -ldl -ltiff -ljpeg
 
 ############################### Various ##############################
 
@@ -26,13 +26,14 @@ RPATH = -rpath=$(EXTRA_DIR)
 all: objs
 	$(CC) $(COPTS) -Wl,-rpath=. main.c \
          hdfy_stl.o stl.o \
-         hdfy_obj.o inobj.o intiff.o \
+         hdfy_obj.o inobj.o intiff.o injpeg.o \
          $(LIBS)
 
 objs:
 	$(CC) $(COPTS) -c stl.c
 	$(CC) $(COPTS) -c hdfy_stl.c
 	$(CC) $(COPTS) -c intiff.c
+	$(CC) $(COPTS) -c injpeg.c
 	$(CXX) $(CXXOPTS) -c inobj.cpp
 	$(CC) $(COPTS) -c hdfy_obj.c
 
