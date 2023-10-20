@@ -38,11 +38,11 @@
 
 #include "tiffio.h"
 
-int intif_ReadImage( char *filename,
+int intif_ReadImage( const char *filename,
                      unsigned int *width, unsigned int *height,
                      unsigned int **data);
 
-int intif_PeekImage( char *filename,
+int intif_PeekImage( const char *filename,
                      unsigned int *width, unsigned int *height );
 
 #endif

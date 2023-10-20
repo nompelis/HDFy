@@ -36,7 +36,7 @@
 
 #include "intiff.h"
 
-int intif_ReadImage( char *filename,
+int intif_ReadImage( const char *filename,
                      unsigned int *iwidth, unsigned int *iheight,
                      unsigned int **data)
 {
@@ -112,7 +112,7 @@ int intif_ReadImage( char *filename,
 }
 
 
-int intif_PeekImage( char *filename,
+int intif_PeekImage( const char *filename,
                      unsigned int *iwidth, unsigned int *iheight )
 {
 #ifdef _DEBUG_
