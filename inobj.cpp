@@ -42,6 +42,8 @@
 extern "C" {
 #endif
 
+#include "intiff.h"
+#include "injpeg.h"
 
 
 //
@@ -62,7 +64,7 @@ inObj::~inObj()
 #ifdef _DEBUG_
    fprintf( stdout, " [DEBUG]  Zone object deconstructed\n" );
 #endif
-
+   clear();
 }
 
 
@@ -100,6 +102,12 @@ int inObj::read( const char filename_[] )
       if( iret ) {
          iret = 2;
       }
+      // drop the buffer (again) if it happened to be used for textures
+      if( buf != NULL ) {
+         free( buf );
+         buf = NULL;
+         nbytes=0;
+      }
    }
 
    return iret;
@@ -119,12 +127,22 @@ void inObj::clear()
    dgroup = { .fs=0, .fe=0 };
    groups.clear();
    mtllib_name.clear();
+   for(int n=0;n<(int)mtls.size();++n) {
+      if( mtls[n].img.type == FILEMAGIC_JPEG ) {
+         free( mtls[n].img.img_data );
+      } else if( mtls[n].img.type == FILEMAGIC_TIFF ) {
+         uint32_t* tmp = (uint32_t*) mtls[n].img.img_data;
+         _TIFFfree( tmp );
+      } else {
+         // other formats should not have any data
+      }
+   }
    mtls.clear();
    vertex.clear();
    normal.clear();
    texel.clear();
-   iadj.clear();
-   jadj.clear();
+   icsr.clear();
+   jcsr.clear();
 
    istate = Unknown;
 }
@@ -140,7 +158,7 @@ int inObj::parse()
    pstate = OBJ_OPEN;
 
    // start the CSR structure for polygons
-   iadj.push_back( 0 );
+   icsr.push_back( 0 );
 
    while( ierr == 0 &&
           pstate != OBJ_ERROR &&
@@ -504,8 +522,8 @@ int inObj::handleFace( std::vector< std::string > & strings )
       }
    }
 
-   // intelligently increase iadj
-   iadj.push_back( iadj[ dgroup.fe ] );
+   // intelligently increase icsr
+   icsr.push_back( icsr[ dgroup.fe ] );
 
    ( dgroup.fe )++;
    if( num_groups ) {
@@ -536,9 +554,9 @@ int inObj::handleFace( std::vector< std::string > & strings )
 
       if( ierr == 0 ) {
          ul = (ul1 << 40) | (ul2 << 20) | ul3;
-         // add to jadj of CSR
-         ++( iadj[ dgroup.fe ] );
-         jadj.push_back( ul );
+         // add to jcsr of CSR
+         ++( icsr[ dgroup.fe ] );
+         jcsr.push_back( ul );
       }
    }
 #ifdef _DEBUG2_
@@ -548,9 +566,9 @@ int inObj::handleFace( std::vector< std::string > & strings )
 // fprintf( stdout, " [DEBUG:handleFace]  Masks: %.16lx %.16lx %.16lx \n",
 //          m1,m2,m3);
    fprintf( stdout, " [DEBUG:handleFace]  Polygon %d (%d:%d) \n",
-            dgroup.fe-1, iadj[ dgroup.fe-1 ], iadj[ dgroup.fe ] );
-   for( i=iadj[ dgroup.fe-1 ]; i<iadj[ dgroup.fe ]; ++i ) {
-      const unsigned long int ul = jadj[i];
+            dgroup.fe-1, icsr[ dgroup.fe-1 ], icsr[ dgroup.fe ] );
+   for( i=icsr[ dgroup.fe-1 ]; i<icsr[ dgroup.fe ]; ++i ) {
+      const unsigned long int ul = jcsr[i];
       fprintf( stdout, "  [%d]  %ld %ld %ld \n",
                i, (ul & m1) >> 40, (ul & m2) >> 20, (ul & m3) );
    }
@@ -611,15 +629,17 @@ int inObj::handleMtllib( std::vector< std::string > & strings )
    return 0;
 }
 
-#define MTLLIB_INIT( mtl ) mtl = \
-                           { .Ka = { -1.0, -1.0, -1.0 },\
-                             .Kd = { -1.0, -1.0, -1.0 },\
-                             .Ks = { -1.0, -1.0, -1.0 },\
-                             .Ns = -9.9,\
-                             .Ni = -9.9,\
-                             .d = -9.9,\
-                             .illum = 9999, \
-                             .map_ptr = NULL };
+#define MTLLIB_INIT( mtl ) { mtl = \
+                             { .Ka = { -1.0, -1.0, -1.0 },\
+                               .Kd = { -1.0, -1.0, -1.0 },\
+                               .Ks = { -1.0, -1.0, -1.0 },\
+                               .Ns = -9.9,\
+                               .Ni = -9.9,\
+                               .d = -9.9,\
+                               .illum = 9999 };\
+                             mtl.name.clear();\
+                             mtl.map_Kd.clear();\
+                             mtl.img.type = FILEMAGIC_UNKNOWN; }
 #ifdef _DEBUG_
 #define MTLLIB_VIEW( mtl ) \
       fprintf( stdout, " [DEBUG:mtllib_view]  Mtllib struct contents \n" );\
@@ -635,7 +655,7 @@ int inObj::parseMtllib()
   if( mtllib_name.size() == 0 ) return 0;
 
 #ifdef _DEBUG_
-      fprintf( stdout, " [DEBUG:parseMtllib]  Starting \n" );
+   fprintf( stdout, " [DEBUG:parseMtllib]  Starting \n" );
 #endif
    struct inObjMtl_s mtl;
    MTLLIB_INIT( mtl )
@@ -671,6 +691,7 @@ int inObj::parseMtllib()
 #ifdef _DEBUG2_
          fprintf( stdout, " [DEBUG:parseMtllib]  Inferred end-of-file \n" );
 #endif
+         // the idea is that if we EOF and we are building one, we must add it
          if( have_one ) {
 #ifdef _DEBUG_
             MTLLIB_VIEW( mtl )
@@ -797,16 +818,20 @@ int inObj:: handleMtlLine( struct inObjMtl_s & mtl, int & have_one )
 
       // processing
       float r;
+      struct inImage_s img = { .type = FILEMAGIC_UNKNOWN };
       switch( mstate ) {
        case MTLLIB_NEWMTL:
          if( have_one == 0 ) {   // the first one we encounter
+            // we indicate that we need to add it at the end of parsing
             have_one = 1;
          } else {                // we have one, and we move to a new one
+            // we are already working on one and we must add it now
 #ifdef _DEBUG_
             MTLLIB_VIEW( mtl )
 #endif
             mtls.push_back( mtl );
          }
+         // now we re-initialize the one we were using as storage
          MTLLIB_INIT( mtl );
          mtl.name = strings[1].c_str();
        break;
@@ -857,6 +882,49 @@ int inObj:: handleMtlLine( struct inObjMtl_s & mtl, int & have_one )
                mtl.map_Kd += " ";
                mtl.map_Kd += strings[i];
             }
+            // handle texture reading
+            ierr = determineFileType( mtl.map_Kd.c_str() );
+#ifdef _DEBUG_
+            fprintf( stdout, " [DEBUG:handleMtlLine]  Texture file type: %d \n",
+                     ierr );
+#endif
+            if( ierr == FILEMAGIC_JPEG ) {
+               unsigned char *img_data;
+               ierr = injpg_ReadImage( mtl.map_Kd.c_str(),
+                            &img_data, &img.width, &img.height, &img.irgb );
+               img.img_data = (void*) img_data;
+               img.type = FILEMAGIC_JPEG;
+            } else if( ierr == FILEMAGIC_TIFF ) {
+               unsigned int *img_data;
+               ierr = intif_ReadImage( mtl.map_Kd.c_str(),
+                                       &img.width, &img.height, &img_data );
+               img.irgb = 4;    // TIFF reader always returns 4 components...
+                                // ...and ChatGPT says alpha will be made 0xFF
+               img.img_data = (void*) img_data;
+               img.type = FILEMAGIC_TIFF;
+            } else {
+               ierr = 100;
+            }
+            if( ierr == 0 ) {
+#ifdef _DEBUG_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Image was read \n" );
+#endif
+               // pass the texture data through the "flattener"...
+               ierr = unifyTexture(  &img );
+#ifdef _DEBUG_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Bad conversion \n" );
+#endif
+               if( ierr ) {
+                  ierr = 300;
+               } else {
+                  memcpy( &(mtl.img), &img, sizeof(struct inImage_s) );
+               }
+            } else {
+#ifdef _DEBUG_
+               fprintf( stdout, " [DEBUG:handleMtlLine]  Image NOT read \n" );
+#endif
+               ierr = 200;
+            }
          }
        break;
        case MTLLIB_READY:
@@ -871,6 +939,78 @@ int inObj:: handleMtlLine( struct inObjMtl_s & mtl, int & have_one )
    return ierr;
 }
 
+// private method to detect (texture image) file type based on magic numbers
+int inObj::determineFileType( const char* filepath ) const
+{
+   if( filepath == NULL ) return -2;
+
+   FILE *fp = fopen( filepath, "rb" );
+   if( fp == NULL ) {
+      fprintf( stdout, " [Error]  Cannot open file: \"%s\"\n", filepath );
+      return -1;
+   }
+
+   unsigned char buffer[4];
+   fread( buffer, 1, 4, fp );
+   fclose( fp );
+
+   // Check for PNG signature
+   if( buffer[0] == 0x89 && buffer[1] == 0x50 &&
+       buffer[2] == 0x4E && buffer[3] == 0x47 ) { return FILEMAGIC_PNG; }
+   // Check for JPEG signature
+   else if( buffer[0] == 0xFF && buffer[1] == 0xD8) { return FILEMAGIC_JPEG; }
+   // Check for TIFF signatures
+   else if( (buffer[0] == 0x49 && buffer[1] == 0x49 &&
+             buffer[2] == 0x2A && buffer[3] == 0x00) ||
+            (buffer[0] == 0x4D && buffer[1] == 0x4D &&
+             buffer[2] == 0x00 && buffer[3] == 0x2A) ) { return FILEMAGIC_TIFF;}
+   else {
+      return FILEMAGIC_UNKNOWN;
+   }
+}
+
+// a private method to take a pre-loaded texture struct and returned "unifed"
+// RGBA data to its buffer regardless of what file format it came from
+int inObj::unifyTexture( struct inImage_s* s )
+{
+   if( s == NULL ) return 1;
+
+   if( s->type == FILEMAGIC_JPEG ) {
+      if( s->irgb == 4 ) {
+         return 0;
+      } else if( s->irgb == 3 ) {
+#ifdef _DEBUG_
+         fprintf( stdout, " [DEBUG]  Re-allocating raster \n" );
+#endif
+         size_t isize = (size_t) (s->width * s->height * 4);
+         unsigned char *tmp = (unsigned char*) malloc( isize );
+         if( tmp == NULL ) {
+            fprintf( stdout, " [Error]  Texture allocation failed \n" );
+            return -1;
+         }
+         unsigned char *tmp0 = (unsigned char*) s->img_data;
+         for(size_t i=0;i<isize;++i) {
+            tmp[i*4  ] = tmp0[i*3  ];
+            tmp[i*4+1] = tmp0[i*3+1];
+            tmp[i*4+2] = tmp0[i*3+2];
+            tmp[i*4+2] = 0xFF;
+         }
+         free( tmp0 );
+         s->img_data = (void*) tmp;
+      } else {
+         fprintf( stdout, " [Error]  JPEG file has %d components \n", s->irgb );
+         return 101;
+      }
+
+   } else if( s->type == FILEMAGIC_TIFF ) {
+
+   } else {
+      fprintf( stdout, " [Error]  Unhandled file type: %d \n", s->type );
+      return 100;
+   }
+
+   return 0;
+}
 
 // Method to write a TecPlot file to visualize with ParaView
 // (For now all faces need to be triangles.)
@@ -883,7 +1023,7 @@ int inObj::dumpTecplot( const char filename[] ) const
 
    int nvert = (int) vertex.size();
    int nnorm = (int) normal.size();
-   int npoly = (int) iadj.size() - 1;
+   int npoly = (int) icsr.size() - 1;
    // switch for only ploting normal vectors if they are pressumed one-to-one
    unsigned char ic=0;
    if( nvert != nnorm ) ic=1;
@@ -891,7 +1031,7 @@ int inObj::dumpTecplot( const char filename[] ) const
    // count polygons as collections of triangles
    int ntri=npoly;
    for(int i=0;i<npoly;++i) {
-      ntri += iadj[i+1] - iadj[i] - 3;
+      ntri += icsr[i+1] - icsr[i] - 3;
    }
 #ifdef _DEBUG_
    fprintf( stdout, " [DEBUG:dumpTecplot]  Poly: %d  Tri: %d \n", npoly, ntri );
@@ -933,14 +1073,14 @@ int inObj::dumpTecplot( const char filename[] ) const
    const unsigned long int m2 = m3 << 20;
    const unsigned long int m1 = m2 << 20;
    for(int i=0;i<npoly;++i) {
-      unsigned long int uf = jadj[ iadj[i] ];   // store the first point-index
+      unsigned long int uf = jcsr[ icsr[i] ];   // store the first point-index
       unsigned long int up;   // to store the "previous" point-index
-      for(int k=iadj[i];k<iadj[i+1];++k) {
-         unsigned long int ul = jadj[k];
-         if( k - iadj[i] < 3 ) {
+      for(int k=icsr[i];k<icsr[i+1];++k) {
+         unsigned long int ul = jcsr[k];
+         if( k - icsr[i] < 3 ) {
             fprintf( fp, " %d ", (int) ( (ul & m1) >> 40 ) );
          } else {
-            if( k - iadj[i] == 3 ) fprintf( fp, "\n" );
+            if( k - icsr[i] == 3 ) fprintf( fp, "\n" );
             fprintf( fp, " %d ", (int) ( (uf & m1) >> 40 ) );
             fprintf( fp, " %d ", (int) ( (up & m1) >> 40 ) );
             fprintf( fp, " %d ", (int) ( (ul & m1) >> 40 ) );

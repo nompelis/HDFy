@@ -112,6 +112,20 @@ class inObj {
    };
    inMtlParseState mstate=MTLLIB_UNKNOWN;
 
+   enum inFileMagic {
+      FILEMAGIC_UNKNOWN = 0,
+      FILEMAGIC_PNG = 1,
+      FILEMAGIC_JPEG = 2,
+      FILEMAGIC_TIFF = 3
+   };
+
+   struct inImage_s {
+      inFileMagic type;
+      unsigned int width,height;
+      int irgb;
+      void* img_data;   // Interpreted differently for diff. types
+   };
+
    struct inObjMtl_s {
       std::string name;
       float Ka[3];
@@ -122,7 +136,7 @@ class inObj {
       float d;
       unsigned short illum;
       std::string map_Kd;
-      void* map_ptr;
+      struct inImage_s img;
    };
 
  private:
@@ -139,8 +153,8 @@ class inObj {
    std::vector< vec3_s > vertex;
    std::vector< vec2_s > texel;
    std::vector< vec3_s > normal;
-   std::vector< int > iadj;                    // CSR style adjacency
-   std::vector< unsigned long int > jadj;      // CSR style adjacency
+   std::vector< int > icsr;                    // CSR style segmented polygons
+   std::vector< unsigned long int > jcsr;      // CSR style segmentes polygons
 
    int parse();
    int readLine();
@@ -155,6 +169,8 @@ class inObj {
    int handleMtllib( std::vector< std::string > & strings );
    int parseMtllib();
    int handleMtlLine( struct inObjMtl_s & mtl_, int & have_one );
+   int determineFileType( const char* filepath ) const;
+   int unifyTexture( struct inImage_s* s );
 
    char* buf=NULL,*buf2=NULL;
    size_t nbytes=0;
