@@ -66,6 +66,10 @@ class inObj {
 
    void clear();
 
+   short getNumGroups() const;
+   void getGroupBounds( short n, int* start, int* end ) const;
+   const char* getGroupName( short n ) const;
+
    int dumpTecplot( const char filename[] ) const;
 
  protected:
@@ -183,9 +187,15 @@ class inObj {
 extern "C" {
 #endif
 
-void* readObjFile( const char filename_[] );
+void* objReadFile( const char filename_[] );
 
-int clearObj( void* p );
+int objClear( void* p );
+
+short objGetNumGroups( void* p );
+
+void objGetGroupBounds( void*p, short n, int* start, int* end );
+
+const char* objGetGroupName( void*p, short n );
 
 int dumpTecplot( void* p, const char filename[]  );
 

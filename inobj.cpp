@@ -147,6 +147,31 @@ void inObj::clear()
    istate = Unknown;
 }
 
+short inObj::getNumGroups() const
+{
+   return num_groups;
+}
+
+void inObj::getGroupBounds( short n, int* start, int* end ) const
+{
+   if( n >= num_groups ) {
+      *start = -1;
+      *end = -1;
+   } else {
+      *start = groups[n].fs;
+      *end = groups[n].fe;
+   }
+}
+
+const char* inObj::getGroupName( short n ) const
+{
+   if( n >= num_groups ) {
+      return NULL;
+   } else {
+      return groups[n].name.c_str();
+   }
+}
+
 // --------------------- protected/private methods -------------------
 
 int inObj::parse()
@@ -1101,7 +1126,7 @@ int inObj::dumpTecplot( const char filename[] ) const
 // Function of the API to read an Alias Wavefront OBJ file
 //
 
-void* readObjFile( const char filename[] )
+void* objReadFile( const char filename[] )
 {
 #ifdef _DEBUG_
    fprintf( stdout, " [DEBUG]  C wrapper of OBJ file reader starting \n" );
@@ -1126,7 +1151,7 @@ void* readObjFile( const char filename[] )
 }
 
 
-int clearObj( void* p )
+int objClear( void* p )
 {
    if( p == NULL ) return 1;
 
@@ -1138,6 +1163,36 @@ int clearObj( void* p )
    return 0;
 }
 
+short objGetNumGroups( void* p )
+{
+   if( p == NULL ) return 1;
+
+   inObj* objp = (inObj*) p;
+
+   return objp->getNumGroups();
+}
+
+void objGetGroupBounds( void* p, short n, int* start, int* end )
+{
+   if( p == NULL ) {
+      *start = -2;
+      *end = -2;
+      return;
+   }
+
+   inObj* objp = (inObj*) p;
+
+   objp->getGroupBounds( n, start, end );
+}
+
+const char* objGetGroupName( void* p, short n )
+{
+   if( p == NULL ) return NULL;
+
+   inObj* objp = (inObj*) p;
+
+   return objp->getGroupName( n );
+}
 
 int dumpTecplot( void* p, const char filename[] )
 {
